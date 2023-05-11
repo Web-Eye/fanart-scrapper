@@ -1,8 +1,11 @@
+import json
 import os
 from fanart.core import Request
 import fanart
 from fanart.music import Artist
 import musicbrainzngs
+
+from libs.core.databaseHelper import databaseHelper
 
 
 def do_fanart():
@@ -16,7 +19,7 @@ def do_fanart():
     # )
     # print(request.response())
 
-    os.environ.setdefault('FANART_APIKEY', os.getenv('FANARTTV_API_KEY'))
+
 
     artist = Artist.get(id='83b9cbe7-9857-49e2-ab8e-b57b01038103')
     for album in artist.albums:
@@ -41,10 +44,52 @@ def getMusicBrainzArtistId(artist):
                 return a['id']
 
 
+def do_artists(config):
+    con = databaseHelper.getConnection(config)
+    cursor = databaseHelper.executeReader(con, 'SELECT idArtist, strArtist FROM artist '
+                                               '    WHERE strMusicBrainzArtistID IS NULL')
 
-if __name__ == '__main__':
+    rows = cursor.fetchall()
+    for row in rows:
+        mb_artistId = getMusicBrainzArtistId(row[1])
+        #  print(f'Artist: {row[1]}; id: {mb_artistId}')
+        databaseHelper.executeNonQuery(con, 'UPDATE artist SET strMusicBrainzArtistID = ? WHERE idArtist = ?',
+                                       (mb_artistId, row[0], ))
+
+
+def do_albums(config):
+    con = databaseHelper.getConnection(config)
+    cursor = databaseHelper.executeReader(con, 'SELECT artist.idArtist, artist.strArtist, '
+                                               'artist.strMusicBrainzArtistId, album.idAlbum, album.strAlbum, '
+                                               'album.strMusicBrainzAlbumID '
+                                               '   FROM album_artist '
+                                               '   LEFT JOIN artist ON album_artist.idArtist = artist.idArtist '
+                                               '   LEFT JOIN album ON album_artist.idAlbum = album.idAlbum '
+                                               'WHERE album.strMusicBrainzAlbumID IS NULL '
+                                               'ORDER BY strSortName')
+
+    rows = cursor.fetchall()
+    for row in rows:
+        print(row)
+
+
+def main():
     musicbrainzngs.set_useragent('python-musicplayer-flask', '0.1', '*****@*****.**')
+    os.environ.setdefault('FANART_APIKEY', os.getenv('FANARTTV_API_KEY'))
+    config = json.loads(os.getenv('DATABASE_CONFIG'))
+
+    # do_artists(config)
+    do_albums(config)
+
     # do_fanart()
     # print(getMusicBrainzArtistId('Pearl Jam'))
     # print(getMusicBrainzAlbumId(artist_id='83b9cbe7-9857-49e2-ab8e-b57b01038103', album='Vitalogy', format='CD', track_count=14))
+
+
+if __name__ == '__main__':
+    main()
+
+
+
+
 
