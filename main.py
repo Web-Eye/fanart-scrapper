@@ -29,12 +29,14 @@ def do_fanart():
                 print(cover.url)
 
 
-def getMusicBrainzAlbumId(artist_id=None, album=None, format=None, track_count=None, release_date=None):
-    test = musicbrainzngs.search_releases(arid=artist_id, release=album, format=format, date=release_date, tracks=track_count)
+def getMusicBrainzAlbumId(artist_id=None, album=None, format=None, track_count=None, release_date=None, comment=None):
+    result = musicbrainzngs.search_releases(arid=artist_id, release=album, format=format, date=release_date,
+                                            tracks=track_count, comment=comment)
 
-    for release in test.get('release-list'):
+    for release in result.get('release-list'):
         if release.get('title') == album:
             return release.get('id')
+
 
 def getMusicBrainzArtistId(artist):
     result = musicbrainzngs.search_artists(artist=artist, limit=100)
@@ -52,25 +54,37 @@ def do_artists(config):
     rows = cursor.fetchall()
     for row in rows:
         mb_artistId = getMusicBrainzArtistId(row[1])
-        #  print(f'Artist: {row[1]}; id: {mb_artistId}')
         databaseHelper.executeNonQuery(con, 'UPDATE artist SET strMusicBrainzArtistID = ? WHERE idArtist = ?',
                                        (mb_artistId, row[0], ))
 
 
 def do_albums(config):
     con = databaseHelper.getConnection(config)
-    cursor = databaseHelper.executeReader(con, 'SELECT artist.idArtist, artist.strArtist, '
-                                               'artist.strMusicBrainzArtistId, album.idAlbum, album.strAlbum, '
-                                               'album.strMusicBrainzAlbumID '
-                                               '   FROM album_artist '
+    cursor = databaseHelper.executeReader(con, 'SELECT artist.strMusicBrainzArtistId, album.idAlbum, album.strAlbum, '
+                                               '       album.strReleaseDate, '
+                                               '       ('
+                                               '            SELECT COUNT(*) FROM song WHERE album.idAlbum = song.idAlbum'
+                                               '       ) AS songCount'
+                                               '   FROM album_artist  '
                                                '   LEFT JOIN artist ON album_artist.idArtist = artist.idArtist '
                                                '   LEFT JOIN album ON album_artist.idAlbum = album.idAlbum '
-                                               'WHERE album.strMusicBrainzAlbumID IS NULL '
+                                               'WHERE album.strMusicBrainzAlbumID IS NULL AND '
+                                               '      NOT artist.strMusicBrainzArtistId IS NULL '
                                                'ORDER BY strSortName')
+
+    # print(getMusicBrainzAlbumId(artist_id='83b9cbe7-9857-49e2-ab8e-b57b01038103', album='Ten', comment='Legacy Edition', format='CD',
+    #                             track_count=28, release_date='2009-03-24'))
 
     rows = cursor.fetchall()
     for row in rows:
+        artist_id = row[0]
+        album = row[2]
+        comment = None
+        if 'Legacy Edition' in album:
+            comment = 'Legacy Edition'
+            album = album.replace('Legacy Edition', '').lstrip().rstrip()
         print(row)
+        print(f'album: {album}; comment: {comment}')
 
 
 def main():
@@ -83,7 +97,12 @@ def main():
 
     # do_fanart()
     # print(getMusicBrainzArtistId('Pearl Jam'))
-    # print(getMusicBrainzAlbumId(artist_id='83b9cbe7-9857-49e2-ab8e-b57b01038103', album='Vitalogy', format='CD', track_count=14))
+    # print(getMusicBrainzAlbumId(artist_id='83b9cbe7-9857-49e2-ab8e-b57b01038103', album='Ten', comment='Legacy Edition', format='CD',
+    #                             track_count=28, release_date='2009-03-24'))
+
+    # print(getMusicBrainzAlbumId(artist_id='7527f6c2-d762-4b88-b5e2-9244f1e34c46', album='B-Sides & Rarities', comment=None,
+    #                             format='CD',
+    #                             track_count=15, release_date='2005'))
 
 
 if __name__ == '__main__':
