@@ -37,6 +37,15 @@ def getMusicBrainzAlbumId(artist_id=None, album=None, format=None, track_count=N
         if release.get('title') == album:
             return release.get('id')
 
+            #  TODO: maybe double validating other things like:
+            #        - song count
+            #        - country (EU / US / other)
+            #        - Format (CD / Other)
+
+            # TODO: getting also release-group id
+            #       maybe genre, mood, styles
+
+
 
 def getMusicBrainzArtistId(artist):
     result = musicbrainzngs.search_artists(artist=artist, limit=100)
@@ -58,19 +67,41 @@ def do_artists(config):
                                        (mb_artistId, row[0], ))
 
 
+def validate_AlbumName(name):
+    comment = None
+    if '(Legacy Edition)' in name:
+        comment = 'Legacy Edition'
+        name = name.replace('(Legacy Edition)', '')
+    elif '(Remastered)' in name:
+        comment = 'Remastered'
+        name = name.replace('(Remastered)', '')
+    elif '(Deluxe Edition)' in name:
+        comment = 'Deluxe Edition'
+        name = name.replace('(Deluxe Edition)', '')
+    elif '(10th Anniversary Edition)' in name:
+        comment = '10th Anniversary Edition'
+        name = name.replace('(10th Anniversary Edition)', '')
+    elif '(OST)' in name:
+        name = name.replace('(OST)', '')
+    elif '(Soundtrack)' in name:
+        name = name.replace('(Soundtrack)', '')
+
+    return name.lstrip().rstrip(), comment
+
+
 def do_albums(config):
     con = databaseHelper.getConnection(config)
     cursor = databaseHelper.executeReader(con, 'SELECT artist.strMusicBrainzArtistId, album.idAlbum, album.strAlbum, '
                                                '       album.strReleaseDate, '
                                                '       ('
-                                               '            SELECT COUNT(*) FROM song WHERE album.idAlbum = song.idAlbum'
+                                               '          SELECT COUNT(*) FROM song WHERE album.idAlbum = song.idAlbum'
                                                '       ) AS songCount'
                                                '   FROM album_artist  '
                                                '   LEFT JOIN artist ON album_artist.idArtist = artist.idArtist '
                                                '   LEFT JOIN album ON album_artist.idAlbum = album.idAlbum '
                                                'WHERE album.strMusicBrainzAlbumID IS NULL AND '
                                                '      NOT artist.strMusicBrainzArtistId IS NULL '
-                                               'ORDER BY strSortName')
+                                               'ORDER BY IFNULL(strSortName, artist.strArtist) LIMIT 10;')
 
     # print(getMusicBrainzAlbumId(artist_id='83b9cbe7-9857-49e2-ab8e-b57b01038103', album='Ten', comment='Legacy Edition', format='CD',
     #                             track_count=28, release_date='2009-03-24'))
@@ -79,12 +110,11 @@ def do_albums(config):
     for row in rows:
         artist_id = row[0]
         album = row[2]
-        comment = None
-        if 'Legacy Edition' in album:
-            comment = 'Legacy Edition'
-            album = album.replace('Legacy Edition', '').lstrip().rstrip()
-        print(row)
-        print(f'album: {album}; comment: {comment}')
+        songCount = row[4]
+        album, comment = validate_AlbumName(album)
+        album_id = getMusicBrainzAlbumId(artist_id=artist_id, album=album, comment=comment,format='CD',
+                                         track_count=songCount, release_date=row[3])
+        print(f'album: "{album}"; comment: "{comment}"; id: "{album_id}"')
 
 
 def main():
