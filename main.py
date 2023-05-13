@@ -4,6 +4,7 @@ from fanart.core import Request
 import fanart
 from fanart.music import Artist
 import musicbrainzngs
+from difflib import SequenceMatcher
 
 from libs.core.databaseHelper import databaseHelper
 
@@ -11,7 +12,7 @@ from libs.core.databaseHelper import databaseHelper
 def do_fanart():
     # request = Request(
     #     apikey=os.getenv('FANARTTV_API_KEY'),
-    #     id='83b9cbe7-9857-49e2-ab8e-b57b01038103',
+    #     id='467a5697-30e7-34b8-9813-d07e6af9c653',
     #     ws=fanart.WS.MUSIC,
     #     type=fanart.TYPE.ALL,
     #     sort=fanart.SORT.POPULAR,
@@ -21,12 +22,27 @@ def do_fanart():
 
 
 
-    artist = Artist.get(id='83b9cbe7-9857-49e2-ab8e-b57b01038103')
+    artist = Artist.get(id='2386cd66-e923-4e8e-bf14-2eebe2e9b973')
     for album in artist.albums:
-        print(album.mbid)
-        if album.mbid == '4816047b-5a40-462a-81e7-2f6eb6687fda':
+        # print(album.mbid)
+        if album.mbid == '467a5697-30e7-34b8-9813-d07e6af9c653':
             for cover in album.covers:
                 print(cover.url)
+
+
+def doReleaseMatch(release, artist_id, album, track_count):
+    if release['medium-track-count'] == track_count:
+
+        artists = release['artist-credit']
+        for a in artists:
+            try:
+                if a['artist']['id'] == artist_id:
+                    if SequenceMatcher(None, release.get('title').lower(), album.lower()).ratio() > 0.9:
+                        return True
+            except:
+                pass
+
+    return False
 
 
 def getMusicBrainzAlbumId(artist_id=None, album=None, format=None, track_count=None, release_date=None, comment=None):
@@ -34,17 +50,10 @@ def getMusicBrainzAlbumId(artist_id=None, album=None, format=None, track_count=N
                                             tracks=track_count, comment=comment)
 
     for release in result.get('release-list'):
-        if release.get('title') == album:
-            return release.get('id')
+        if doReleaseMatch(release, artist_id, album, track_count):
+            return release.get('id'), release['release-group']['id']
 
-            #  TODO: maybe double validating other things like:
-            #        - song count
-            #        - country (EU / US / other)
-            #        - Format (CD / Other)
-
-            # TODO: getting also release-group id
-            #       maybe genre, mood, styles
-
+    return None, None
 
 
 def getMusicBrainzArtistId(artist):
@@ -85,6 +94,8 @@ def validate_AlbumName(name):
         name = name.replace('(OST)', '')
     elif '(Soundtrack)' in name:
         name = name.replace('(Soundtrack)', '')
+    elif '(unofficial Fanta 4 Album)' in name:
+        name = name.replace('(unofficial Fanta 4 Album)', '')
 
     return name.lstrip().rstrip(), comment
 
@@ -101,20 +112,20 @@ def do_albums(config):
                                                '   LEFT JOIN album ON album_artist.idAlbum = album.idAlbum '
                                                'WHERE album.strMusicBrainzAlbumID IS NULL AND '
                                                '      NOT artist.strMusicBrainzArtistId IS NULL '
-                                               'ORDER BY IFNULL(strSortName, artist.strArtist) LIMIT 10;')
-
-    # print(getMusicBrainzAlbumId(artist_id='83b9cbe7-9857-49e2-ab8e-b57b01038103', album='Ten', comment='Legacy Edition', format='CD',
-    #                             track_count=28, release_date='2009-03-24'))
+                                               'ORDER BY IFNULL(strSortName, artist.strArtist);')
 
     rows = cursor.fetchall()
     for row in rows:
         artist_id = row[0]
+        album_id = row[1]
         album = row[2]
         songCount = row[4]
         album, comment = validate_AlbumName(album)
-        album_id = getMusicBrainzAlbumId(artist_id=artist_id, album=album, comment=comment,format='CD',
-                                         track_count=songCount, release_date=row[3])
-        print(f'album: "{album}"; comment: "{comment}"; id: "{album_id}"')
+        album_MBID, release_group_MBID = getMusicBrainzAlbumId(artist_id=artist_id, album=album, comment=comment,
+                                                               format='CD', track_count=songCount, release_date=row[3])
+
+        databaseHelper.executeNonQuery(con, 'UPDATE album SET strMusicBrainzAlbumId = ?, strReleaseGroupMBID = ? '
+                                            '   WHERE idAlbum = ?', (album_MBID, release_group_MBID, album_id, ))
 
 
 def main():
