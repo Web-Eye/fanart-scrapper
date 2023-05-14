@@ -96,6 +96,8 @@ def validate_AlbumName(name):
         name = name.replace('(Soundtrack)', '')
     elif '(unofficial Fanta 4 Album)' in name:
         name = name.replace('(unofficial Fanta 4 Album)', '')
+    elif '(Maxi)' in name:
+        name = name.replace('(Maxi)', '')
 
     return name.lstrip().rstrip(), comment
 
