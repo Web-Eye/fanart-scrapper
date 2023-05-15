@@ -3,31 +3,41 @@ import os
 from fanart.core import Request
 import fanart
 from fanart.music import Artist
+from fanart import errors
 import musicbrainzngs
 from difflib import SequenceMatcher
 
 from libs.core.databaseHelper import databaseHelper
 
 
-def do_fanart():
-    # request = Request(
-    #     apikey=os.getenv('FANARTTV_API_KEY'),
-    #     id='467a5697-30e7-34b8-9813-d07e6af9c653',
-    #     ws=fanart.WS.MUSIC,
-    #     type=fanart.TYPE.ALL,
-    #     sort=fanart.SORT.POPULAR,
-    #     limit=fanart.LIMIT.ALL,
-    # )
-    # print(request.response())
+def do_fanart(config):
+    con = databaseHelper.getConnection(config)
+    cursor = databaseHelper.executeReader(con, 'SELECT art_id, artist.strMusicBrainzArtistID, '
+                                               '       album.strReleaseGroupMBID, album.strMusicBrainzAlbumID  '
+                                               '   FROM art '
+                                               '   LEFT JOIN album ON art.media_type = ? AND '
+                                               '                      art.media_id = album.idAlbum    '
+                                               '   LEFT JOIN album_artist ON album.idAlbum = album_artist.idAlbum'
+                                               '   LEFT JOIN artist ON album_artist.idArtist = artist.idArtist'
+                                               ''
+                                               '   WHERE art.url NOT LIKE ? AND '
+                                               '         NOT artist.strMusicBrainzArtistID IS NULL AND '
+                                               '         NOT strReleaseGroupMBID IS NULL NOT album.strAlbum LIKE ? AND '
+                                               '         NOT album.strAlbum LIKE ? AND NOT album.strAlbum LIKE ? AND '
+                                               '         NOT album.strAlbum LIKE ;',
+                                          ('album', 'http%', '%(Legacy Edition)%', '%(Remastered)%',
+                                           '%(Deluxe Edition)%', '%(10th Anniversary Edition)%', ))
 
-
-
-    artist = Artist.get(id='2386cd66-e923-4e8e-bf14-2eebe2e9b973')
-    for album in artist.albums:
-        # print(album.mbid)
-        if album.mbid == '467a5697-30e7-34b8-9813-d07e6af9c653':
-            for cover in album.covers:
-                print(cover.url)
+    rows = cursor.fetchall()
+    for row in rows:
+        try:
+            artist = Artist.get(id=row[1])
+            for album in artist.albums:
+                if album.mbid == row[2]:
+                    if len(album.covers) > 0:
+                        print(album.covers[0].url)
+        except fanart.errors.ResponseFanartError:
+            pass
 
 
 def doReleaseMatch(release, artist_id, album, track_count):
@@ -136,7 +146,8 @@ def main():
     config = json.loads(os.getenv('DATABASE_CONFIG'))
 
     # do_artists(config)
-    do_albums(config)
+    # do_albums(config)
+    do_fanart(config)
 
     # do_fanart()
     # print(getMusicBrainzArtistId('Pearl Jam'))
