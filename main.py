@@ -21,12 +21,14 @@ def do_fanart(config):
                                                '   LEFT JOIN artist ON album_artist.idArtist = artist.idArtist'
                                                ''
                                                '   WHERE art.url NOT LIKE ? AND '
-                                               '         NOT artist.strMusicBrainzArtistID IS NULL AND '
-                                               '         NOT strReleaseGroupMBID IS NULL NOT album.strAlbum LIKE ? AND '
-                                               '         NOT album.strAlbum LIKE ? AND NOT album.strAlbum LIKE ? AND '
-                                               '         NOT album.strAlbum LIKE ;',
-                                          ('album', 'http%', '%(Legacy Edition)%', '%(Remastered)%',
-                                           '%(Deluxe Edition)%', '%(10th Anniversary Edition)%', ))
+                                               '         NOT artist.strMusicBrainzArtistID IS NULL AND'
+                                               '         NOT strReleaseGroupMBID IS NULL;', ('album', 'http%', ))
+
+#                                               '         NOT strReleaseGroupMBID IS NULL NOT album.strAlbum LIKE ? AND '
+#                                               '         NOT album.strAlbum LIKE ? AND NOT album.strAlbum LIKE ? AND '
+#                                               '         NOT album.strAlbum LIKE ;',
+#                                          ('album', 'http%', '%(Legacy Edition)%', '%(Remastered)%',
+#                                           '%(Deluxe Edition)%', '%(10th Anniversary Edition)%', ))
 
     rows = cursor.fetchall()
     for row in rows:
@@ -35,7 +37,15 @@ def do_fanart(config):
             for album in artist.albums:
                 if album.mbid == row[2]:
                     if len(album.covers) > 0:
-                        print(album.covers[0].url)
+                        cover = album.covers[0].url
+                        lst_alt_covers = []
+                        for c in album.covers:
+                            lst_alt_covers.append(c.url)
+                        alt_covers = json.dumps(lst_alt_covers)
+                        databaseHelper.executeNonQuery(con,
+                                                       'UPDATE art SET url = ?, alt_urls = ? WHERE art_id = ?',
+                                                       (cover, alt_covers, row[0], ))
+
         except fanart.errors.ResponseFanartError:
             pass
 
