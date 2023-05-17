@@ -7,11 +7,13 @@ from fanart import errors
 import musicbrainzngs
 from difflib import SequenceMatcher
 
+from libs.core.coverartarchiveAPI import coverartarchiveAPI
 from libs.core.databaseHelper import databaseHelper
 
 
 def do_fanart(config):
     con = databaseHelper.getConnection(config)
+    caAPI = coverartarchiveAPI()
     cursor = databaseHelper.executeReader(con, 'SELECT art_id, artist.strMusicBrainzArtistID, '
                                                '       album.strReleaseGroupMBID, album.strMusicBrainzAlbumID  '
                                                '   FROM art '
@@ -24,30 +26,50 @@ def do_fanart(config):
                                                '         NOT artist.strMusicBrainzArtistID IS NULL AND'
                                                '         NOT strReleaseGroupMBID IS NULL;', ('album', 'http%', ))
 
-#                                               '         NOT strReleaseGroupMBID IS NULL NOT album.strAlbum LIKE ? AND '
-#                                               '         NOT album.strAlbum LIKE ? AND NOT album.strAlbum LIKE ? AND '
-#                                               '         NOT album.strAlbum LIKE ;',
-#                                          ('album', 'http%', '%(Legacy Edition)%', '%(Remastered)%',
-#                                           '%(Deluxe Edition)%', '%(10th Anniversary Edition)%', ))
-
     rows = cursor.fetchall()
     for row in rows:
+        found = False
+        cover = None
+        alt_covers = None
         try:
             artist = Artist.get(id=row[1])
             for album in artist.albums:
                 if album.mbid == row[2]:
                     if len(album.covers) > 0:
+                        found = True
                         cover = album.covers[0].url
                         lst_alt_covers = []
                         for c in album.covers:
                             lst_alt_covers.append(c.url)
                         alt_covers = json.dumps(lst_alt_covers)
-                        databaseHelper.executeNonQuery(con,
-                                                       'UPDATE art SET url = ?, alt_urls = ? WHERE art_id = ?',
-                                                       (cover, alt_covers, row[0], ))
 
         except fanart.errors.ResponseFanartError:
             pass
+
+        if not found:
+            _album = caAPI.getRelease(row[3])
+            if _album:
+                for i in _album['images']:
+                    if i['front']:
+                        found = True
+                        cover = i['image']
+                        alt_covers = None
+
+        if not found:
+            _album = caAPI.getReleaseGroup(row[2])
+            if _album:
+                for i in _album['images']:
+                    if i['front']:
+                        found = True
+                        cover = i['image']
+                        alt_covers = None
+
+        if found:
+            print(cover)
+            # databaseHelper.executeNonQuery(con, 'UPDATE art SET url = ?, alt_urls = ? WHERE art_id = ?',
+            #                                (cover, alt_covers, row[0],))
+
+
 
 
 def doReleaseMatch(release, artist_id, album, track_count):
